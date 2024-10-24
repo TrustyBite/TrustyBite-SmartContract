@@ -145,6 +145,120 @@ test('does not retrieve non-existing restaurant', async (t) => {
   t.is(sensorData, null);
 });
 
+test('updates the owner of a restaurant', async (t) => {
+  const { root, contract } = t.context.accounts;
+
+  // Register the restaurant with the original owner (root)
+  await root.call(contract, 'register_restaurant', { restaurant_id: 'restaurant1' });
+
+  // Check initial owner
+  let owner = await contract.view('get_owner', { restaurant_id: 'restaurant1' });
+  t.is(owner, root.accountId);
+
+  // Create a new account to update the owner
+  const newOwner = await root.createSubAccount('new-owner-account');
+
+  // Update the owner to the new account
+  await root.call(contract, 'update_owner', {
+    restaurant_id: 'restaurant1',
+    new_owner: newOwner.accountId
+  });
+
+  // Check that the owner has been updated
+  owner = await contract.view('get_owner', { restaurant_id: 'restaurant1' });
+  t.is(owner, newOwner.accountId);
+});
+
+test('retrieves last activity timestamp for a restaurant with sensor data', async (t) => {
+  const { root, contract } = t.context.accounts;
+
+  // Register a restaurant
+  await root.call(contract, 'register_restaurant', { restaurant_id: 'restaurant1' });
+
+  // Add sensor data for the restaurant
+  await root.call(contract, 'add_sensor_data', {
+    restaurant_id: 'restaurant1',
+    category: 'fruits',
+    humidity: 60,
+    temperature: 25,
+    mq3: 10,
+    mq4: 20,
+    mq8: 30,
+    mq135: 40,
+    mq137: 50
+  });
+
+  // Retrieve the last activity timestamp
+  const lastActivity = await contract.view('get_last_activity', {
+    restaurant_id: 'restaurant1',
+    category: 'fruits'
+  });
+
+  // Ensure the last activity timestamp is returned and valid
+  t.truthy(lastActivity); // Check that the timestamp is not null or undefined
+  t.is(typeof lastActivity, 'number'); // Ensure the timestamp is a number
+  t.true(lastActivity > 0); // Ensure the timestamp is greater than 0
+});
+
+test('returns null for last activity when no sensor data is recorded', async (t) => {
+  const { root, contract } = t.context.accounts;
+
+  // Register a restaurant without adding sensor data
+  await root.call(contract, 'register_restaurant', { restaurant_id: 'restaurant2' });
+
+  // Retrieve the last activity timestamp
+  const lastActivity = await contract.view('get_last_activity', {
+    restaurant_id: 'restaurant2',
+    category: 'fruits'
+  });
+
+  // Ensure the last activity returns null when no data is present
+  t.is(lastActivity, null);
+});
+
+test('checks if a restaurant is active based on last activity', async (t) => {
+  const { root, contract } = t.context.accounts;
+
+  // Register a restaurant and add sensor data
+  await root.call(contract, 'register_restaurant', { restaurant_id: 'restaurant1' });
+
+  // Add sensor data with a timestamp within the last hour
+  await root.call(contract, 'add_sensor_data', {
+    restaurant_id: 'restaurant1',
+    category: 'fruits',
+    humidity: 60,
+    temperature: 25,
+    mq3: 10,
+    mq4: 20,
+    mq8: 30,
+    mq135: 40,
+    mq137: 50
+  });
+
+  // Check if the restaurant is active
+  const isActive = await contract.view('is_restaurant_active', {
+    restaurant_id: 'restaurant1',
+    category: 'fruits'
+  });
+
+  console.log('isActive (before old data):', isActive); // Debug log
+
+  t.true(isActive); // Should return true as the last activity was recent
+
+  // Register a new restaurant with no data
+  await root.call(contract, 'register_restaurant', { restaurant_id: 'restaurant2' });
+
+  // Check if the new restaurant is active (should be false since there's no data)
+  const isNewRestaurantActive = await contract.view('is_restaurant_active', {
+    restaurant_id: 'restaurant2',
+    category: 'fruits'
+  });
+
+  console.log('isNewRestaurantActive (no data):', isNewRestaurantActive); // Debug log
+  t.false(isNewRestaurantActive); // Should return false since there's no activity recorded
+
+});
+
 test('does not retrieve reviews from non-existing restaurant', async (t) => {
   const { contract } = t.context.accounts;
 

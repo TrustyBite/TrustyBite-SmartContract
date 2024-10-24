@@ -251,4 +251,100 @@ get_sensor_data({
   list_restaurants(): Array<string> {
     return Object.keys(this.restaurants);
   }
+
+  // Get the owner of a restaurant
+  @view({})
+  get_owner({ restaurant_id }: { restaurant_id: string }): string | null {
+    const restaurant = this.restaurants[restaurant_id];
+    if (!restaurant) {
+      near.log(`Restaurant ${restaurant_id} is not registered.`);
+      return null;
+    }
+    return restaurant.owner;
+  }
+
+  // Update the owner of a restaurant
+  @call({})
+  update_owner({
+    restaurant_id,
+    new_owner
+  }: {
+    restaurant_id: string,
+    new_owner: string
+  }): void {
+    const restaurant = this.restaurants[restaurant_id];
+
+    if (!restaurant) {
+      near.log(`Restaurant ${restaurant_id} is not registered.`);
+      return;
+    }
+
+    // Ensure the caller is the current owner
+    const caller = near.predecessorAccountId();
+    if (restaurant.owner !== caller) {
+      near.log(`Caller ${caller} is not the owner of restaurant ${restaurant_id}.`);
+      return;
+    }
+
+    // Update the owner
+    restaurant.owner = new_owner;
+    near.log(`Owner of restaurant ${restaurant_id} has been updated to ${new_owner}.`);
+  }
+
+  @view({})
+  get_last_activity({
+    restaurant_id,
+    category
+  }: {
+    restaurant_id: string,
+    category: "fruits" | "vegetables" | "meat" | "fish"
+  }): number | null {
+    const restaurant = this.restaurants[restaurant_id];
+    
+    // Check if the restaurant is registered
+    if (!restaurant) {
+      near.log(`Restaurant ${restaurant_id} is not registered.`);
+      return null;
+    }
+
+    const categoryData = restaurant.categories[category];
+
+    // Check if categoryData exists and is not empty
+    if (!categoryData || categoryData.length === 0) {
+      near.log(`No sensor data recorded for ${category} at restaurant ${restaurant_id}.`);
+      return null;
+    }
+
+    // Now it's safe to access the last entry
+    const lastEntry = categoryData[categoryData.length - 1];
+    return lastEntry.timestamp;
+  }
+
+  @view({})
+  is_restaurant_active({
+    restaurant_id,
+    category
+  }: {
+    restaurant_id: string,
+    category: "fruits" | "vegetables" | "meat" | "fish"
+  }): boolean {
+    const lastActivityTimestamp = this.get_last_activity({ restaurant_id, category });
+  
+    if (lastActivityTimestamp === null) {
+      near.log(`No activity recorded for restaurant ${restaurant_id} in category ${category}.`);
+      return false; // No activity recorded
+    }
+  
+    const currentTime: bigint = near.blockTimestamp();
+    const oneHourInNanoseconds: bigint = BigInt(60 * 60 * 1_000_000_000);
+  
+    // Convert lastActivityTimestamp to bigint
+    const lastActivityTime = BigInt(lastActivityTimestamp) * BigInt(1_000_000);
+    near.log(`Current Time: ${currentTime}`);
+    near.log(`Last Activity Timestamp: ${lastActivityTime}`);
+    near.log(`Difference: ${currentTime - lastActivityTime}`);
+    
+    return (currentTime - lastActivityTime) <= oneHourInNanoseconds;
+  }
+
 }
